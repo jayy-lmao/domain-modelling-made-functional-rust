@@ -38,10 +38,10 @@ pub(crate) struct Price {
 }
 
 impl Price {
-    fn value(&self) -> f64 {
+    pub(crate) fn value(&self) -> f64 {
         self.value
     }
-    fn new(value: f64) -> Self {
+    pub(crate) fn new(value: f64) -> Self {
         Self { value }
     }
 }

@@ -3,7 +3,7 @@ pub(crate) struct Address {
 }
 
 pub(crate) struct Letter {
-    content: String,
+    pub(crate) content: String,
 }
 
 pub(crate) struct Acknowledgment {
