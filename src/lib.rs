@@ -375,7 +375,7 @@ async fn place_order<
     create_acknowledgment_letter: fn(PricedOrderWithShipping) -> Fut5,
     send_order_acknowledgement: fn(Acknowledgment) -> Fut6,
     unvalidated_order: UnvalidatedOrder,
-) -> Result<Vec<Event>> {
+) -> Result<Vec<PlaceOrderEvent>> {
     let validated_order = validate_order(
         check_product_exists,
         check_address_exists,
@@ -391,8 +391,9 @@ async fn place_order<
     let acknowledgment_option = acknowledge_order(
         create_acknowledgment_letter,
         send_order_acknowledgement,
-        priced_order_with_shipping,
+        priced_order_with_shipping.clone(),
     )
     .await?;
-    todo!();
+    let events = create_events(priced_order_with_shipping, acknowledgment_option);
+    Ok(events)
 }
