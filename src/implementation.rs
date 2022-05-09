@@ -6,6 +6,7 @@ use futures_util::Future;
 
 use crate::compound_types::*;
 use crate::internal_types::*;
+use crate::public_types::*;
 use crate::simple_types::*;
 
 // ======================================================
@@ -159,41 +160,21 @@ async fn acknowledge_order<
 // Create events
 // ---------------------------
 
-#[derive(Clone)]
-struct AcknowledgmentSent {
-    order_id: OrderId,
-}
-#[derive(Clone)]
-struct ShippableOrderPlaced {
-    order_id: OrderId,
-}
-
-#[derive(Clone)]
-struct BillableOrderPlaced {
-    order_id: OrderId,
-    amount_to_bill: Price,
-}
-
-#[derive(Clone)]
-enum PlaceOrderEvent {
-    AcknowledgmentSent(AcknowledgmentSent),
-    ShippableOrderPlaced(ShippableOrderPlaced),
-    BillableOrderPlaced(BillableOrderPlaced),
-}
-
 fn create_shipping_event(placed_order: PricedOrder) -> PlaceOrderEvent {
-    PlaceOrderEvent::ShippableOrderPlaced(ShippableOrderPlaced {
+    ShippableOrderPlaced {
         order_id: placed_order.order_id,
-    })
+    }
+    .into()
 }
 fn create_billing_event(placed_order: PricedOrder) -> PlaceOrderEvent {
-    PlaceOrderEvent::BillableOrderPlaced(BillableOrderPlaced {
+    BillableOrderPlaced {
         order_id: placed_order.order_id,
         amount_to_bill: placed_order.amount_to_bill.value(),
-    })
+    }
+    .into()
 }
 fn create_acknowledgment_event(order_id: OrderId) -> PlaceOrderEvent {
-    PlaceOrderEvent::AcknowledgmentSent(AcknowledgmentSent { order_id })
+    AcknowledgmentSent { order_id }.into()
 }
 
 fn create_events(
@@ -215,6 +196,7 @@ fn create_events(
 // overall workflow
 // ---------------------------
 
+/// A workflow to place an order and return events, in the flavor of Scott Wlaschins Domain Modelling Made Functional
 async fn place_order<
     'a,
     Fut1: 'a + Future<Output = Result<()>>,
