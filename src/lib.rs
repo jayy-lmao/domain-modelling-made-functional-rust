@@ -9,6 +9,9 @@ struct Price {
 }
 
 impl Price {
+    fn value(&self) -> f64 {
+        self.value
+    }
     fn new(value: f64) -> Self {
         Self { value }
     }
@@ -30,26 +33,50 @@ impl Sum<Self> for Price {
     }
 }
 
+#[derive(Clone)]
 struct BillingAmount {
     value: Price,
 }
 
 impl BillingAmount {
+    fn value(&self) -> Price {
+        self.value
+    }
     fn sum_prices(prices: impl Iterator<Item = Price>) -> BillingAmount {
         let sum = prices.sum();
         Self { value: sum }
     }
 }
 
+#[derive(Clone)]
 struct PricedOrderLine {
     order_line_id: OrderLineId,
     line_price: Price,
 }
 
+#[derive(Clone)]
 struct PricedOrder {
     order_id: OrderId,
     amount_to_bill: BillingAmount,
     lines: Vec<PricedOrderLine>,
+}
+
+#[derive(Clone)]
+enum ShippingMethod {
+    Postal,
+    Fedex,
+}
+
+#[derive(Clone)]
+struct ShippingInfo {
+    method: ShippingMethod,
+    price: Price,
+}
+
+#[derive(Clone)]
+struct PricedOrderWithShipping {
+    priced_order: PricedOrder,
+    shipping: ShippingInfo,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,6 +89,7 @@ impl OrderLineId {
         Self { value: id.into() }
     }
 }
+#[derive(Clone)]
 struct OrderId {
     value: String,
 }
@@ -115,6 +143,19 @@ struct Letter {
 enum Event {
     ProductSent,
 }
+
+enum SendResult {
+    Sent,
+    NotSent,
+}
+
+// ======================================================
+// Section 2 : Implementation
+// ======================================================
+
+// ---------------------------
+// ValidateOrder step
+// ---------------------------
 
 async fn to_valid_order_line<Fut1: Future<Output = Result<()>>>(
     check_product_code_exists: fn(ProductCode) -> Fut1,
@@ -174,6 +215,10 @@ async fn validate_order<Fut1: Future<Output = Result<()>>, Fut2: Future<Output =
     Ok(order)
 }
 
+// ---------------------------
+// PriceOrder step
+// ---------------------------
+
 async fn to_priced_order_line<Fut1: Future<Output = Result<Price>>>(
     get_product_price: fn(ProductCode) -> Fut1,
     validated_order_line: ValidatedOrderLine,
@@ -187,8 +232,8 @@ async fn to_priced_order_line<Fut1: Future<Output = Result<Price>>>(
     Ok(priced_order_line)
 }
 
-async fn price_order<Fut1: Future<Output = Result<Price>>>(
-    get_product_price: fn(ProductCode) -> Fut1,
+async fn price_order<Fut: Future<Output = Result<Price>>>(
+    get_product_price: fn(ProductCode) -> Fut,
     validated_order: ValidatedOrder,
 ) -> Result<PricedOrder> {
     let lines = try_join_all(
@@ -208,19 +253,127 @@ async fn price_order<Fut1: Future<Output = Result<Price>>>(
     };
     Ok(priced_order)
 }
+// ---------------------------
+// Shipping step
+// ---------------------------
 
-// type CheckProductExists<Fut1: Future<Output=Result<()>>> = fn(ProductCode) -> Fut1;
+async fn add_shipping_info_to_order<Fut: Future<Output = Result<Price>>>(
+    calculate_shipping_cost: fn(PricedOrder) -> Fut,
+    priced_order: PricedOrder,
+) -> Result<PricedOrderWithShipping> {
+    let price = calculate_shipping_cost(priced_order.clone()).await?;
+
+    let shipping = ShippingInfo {
+        method: ShippingMethod::Postal,
+        price,
+    };
+
+    let priced_order_with_shipping = PricedOrderWithShipping {
+        priced_order,
+        shipping,
+    };
+
+    Ok(priced_order_with_shipping)
+}
+
+// ---------------------------
+// AcknowledgeOrder step
+// ---------------------------
+struct Acknowledgment {
+    // email_address,
+    letter: Letter,
+}
+
+async fn acknowledge_order<
+    Fut1: Future<Output = Result<Letter>>,
+    Fut2: Future<Output = Result<SendResult>>,
+>(
+    create_acknowledgment_letter: fn(PricedOrderWithShipping) -> Fut1,
+    send_order_acknowledgement: fn(Acknowledgment) -> Fut2,
+    priced_order: PricedOrderWithShipping,
+) -> Result<Option<OrderId>> {
+    let letter = create_acknowledgment_letter(priced_order.clone()).await?;
+    let acknowledgement = Acknowledgment { letter };
+    match send_order_acknowledgement(acknowledgement).await? {
+        SendResult::Sent => Ok(Some(priced_order.priced_order.order_id)),
+        SendResult::NotSent => Ok(None),
+    }
+}
+
+// ---------------------------
+// Create events
+// ---------------------------
+
+#[derive(Clone)]
+struct AcknowledgmentSent {
+    order_id: OrderId,
+}
+#[derive(Clone)]
+struct ShippableOrderPlaced {
+    order_id: OrderId,
+}
+
+#[derive(Clone)]
+struct BillableOrderPlaced {
+    order_id: OrderId,
+    amount_to_bill: Price,
+}
+
+#[derive(Clone)]
+enum PlaceOrderEvent {
+    AcknowledgmentSent(AcknowledgmentSent),
+    ShippableOrderPlaced(ShippableOrderPlaced),
+    BillableOrderPlaced(BillableOrderPlaced),
+}
+
+fn create_shipping_event(placed_order: PricedOrder) -> PlaceOrderEvent {
+    PlaceOrderEvent::ShippableOrderPlaced(ShippableOrderPlaced {
+        order_id: placed_order.order_id,
+    })
+}
+fn create_billing_event(placed_order: PricedOrder) -> PlaceOrderEvent {
+    PlaceOrderEvent::BillableOrderPlaced(BillableOrderPlaced {
+        order_id: placed_order.order_id,
+        amount_to_bill: placed_order.amount_to_bill.value(),
+    })
+}
+fn create_acknowledgment_event(order_id: OrderId) -> PlaceOrderEvent {
+    PlaceOrderEvent::AcknowledgmentSent(AcknowledgmentSent { order_id })
+}
+
+fn create_events(
+    priced_order: PricedOrderWithShipping,
+    acknowledgment_option: Option<OrderId>,
+) -> Vec<PlaceOrderEvent> {
+    let acknowledgment_events = acknowledgment_option
+        .map(create_acknowledgment_event)
+        .map(|e| vec![e])
+        .unwrap_or(vec![]);
+
+    let billing_events = vec![create_billing_event(priced_order.priced_order.clone())];
+    let shipping_events = vec![create_shipping_event(priced_order.priced_order.clone())];
+
+    [acknowledgment_events, billing_events, shipping_events].concat()
+}
+
+// ---------------------------
+// overall workflow
+// ---------------------------
 
 async fn place_order<
     Fut1: Future<Output = Result<()>>,
     Fut2: Future<Output = Result<()>>,
     Fut3: Future<Output = Result<Price>>,
-    Fut4: Future<Output = Result<Letter>>,
+    Fut4: Future<Output = Result<Price>>,
+    Fut5: Future<Output = Result<Letter>>,
+    Fut6: Future<Output = Result<SendResult>>,
 >(
     check_product_exists: fn(ProductCode) -> Fut1,
     check_address_exists: fn(Address) -> Fut2,
     get_product_price: fn(ProductCode) -> Fut3,
-    create_order_acknowledgment_letter: fn(product: Product) -> Fut4,
+    calculate_shipping_cost: fn(PricedOrder) -> Fut4,
+    create_acknowledgment_letter: fn(PricedOrderWithShipping) -> Fut5,
+    send_order_acknowledgement: fn(Acknowledgment) -> Fut6,
     unvalidated_order: UnvalidatedOrder,
 ) -> Result<Vec<Event>> {
     let validated_order = validate_order(
@@ -231,5 +384,15 @@ async fn place_order<
     .await?;
 
     let priced_order = price_order(get_product_price, validated_order).await?;
+
+    let priced_order_with_shipping =
+        add_shipping_info_to_order(calculate_shipping_cost, priced_order).await?;
+
+    let acknowledgment_option = acknowledge_order(
+        create_acknowledgment_letter,
+        send_order_acknowledgement,
+        priced_order_with_shipping,
+    )
+    .await?;
     todo!();
 }
