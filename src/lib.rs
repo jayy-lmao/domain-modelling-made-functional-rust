@@ -1,4 +1,4 @@
-use std::{future::Future, iter::Sum};
+use std::{future::Future, iter::Sum, pin::Pin};
 
 use anyhow::Result;
 use futures_util::future::try_join_all;
@@ -361,12 +361,13 @@ fn create_events(
 // ---------------------------
 
 async fn place_order<
-    Fut1: Future<Output = Result<()>>,
-    Fut2: Future<Output = Result<()>>,
-    Fut3: Future<Output = Result<Price>>,
-    Fut4: Future<Output = Result<Price>>,
-    Fut5: Future<Output = Result<Letter>>,
-    Fut6: Future<Output = Result<SendResult>>,
+    'a,
+    Fut1: 'a + Future<Output = Result<()>>,
+    Fut2: 'a + Future<Output = Result<()>>,
+    Fut3: 'a + Future<Output = Result<Price>>,
+    Fut4: 'a + Future<Output = Result<Price>>,
+    Fut5: 'a + Future<Output = Result<Letter>>,
+    Fut6: 'a + Future<Output = Result<SendResult>>,
 >(
     check_product_exists: fn(ProductCode) -> Fut1,
     check_address_exists: fn(Address) -> Fut2,
@@ -374,26 +375,30 @@ async fn place_order<
     calculate_shipping_cost: fn(PricedOrder) -> Fut4,
     create_acknowledgment_letter: fn(PricedOrderWithShipping) -> Fut5,
     send_order_acknowledgement: fn(Acknowledgment) -> Fut6,
-    unvalidated_order: UnvalidatedOrder,
-) -> Result<Vec<PlaceOrderEvent>> {
-    let validated_order = validate_order(
-        check_product_exists,
-        check_address_exists,
-        unvalidated_order,
-    )
-    .await?;
+    // unvalidated_order: UnvalidatedOrder,
+) -> impl Fn(UnvalidatedOrder) -> Pin<Box<dyn Future<Output = Result<Vec<PlaceOrderEvent>>> + 'a>> {
+    move |unvalidated_order: UnvalidatedOrder| {
+        Box::pin(async move {
+            let validated_order = validate_order(
+                check_product_exists,
+                check_address_exists,
+                unvalidated_order,
+            )
+            .await?;
 
-    let priced_order = price_order(get_product_price, validated_order).await?;
+            let priced_order = price_order(get_product_price, validated_order).await?;
 
-    let priced_order_with_shipping =
-        add_shipping_info_to_order(calculate_shipping_cost, priced_order).await?;
+            let priced_order_with_shipping =
+                add_shipping_info_to_order(calculate_shipping_cost, priced_order).await?;
 
-    let acknowledgment_option = acknowledge_order(
-        create_acknowledgment_letter,
-        send_order_acknowledgement,
-        priced_order_with_shipping.clone(),
-    )
-    .await?;
-    let events = create_events(priced_order_with_shipping, acknowledgment_option);
-    Ok(events)
+            let acknowledgment_option = acknowledge_order(
+                create_acknowledgment_letter,
+                send_order_acknowledgement,
+                priced_order_with_shipping.clone(),
+            )
+            .await?;
+            let events = create_events(priced_order_with_shipping, acknowledgment_option);
+            Ok(events)
+        })
+    }
 }
