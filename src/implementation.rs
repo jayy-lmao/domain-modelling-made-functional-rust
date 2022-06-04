@@ -1,8 +1,7 @@
-use std::pin::Pin;
-
 use anyhow::Result;
+use async_fn_traits::AsyncFn1;
+use async_fn_traits::AsyncFnOnce1;
 use futures_util::future::try_join_all;
-use futures_util::Future;
 
 use crate::compound_types::*;
 use crate::internal_types::*;
@@ -17,8 +16,8 @@ use crate::simple_types::*;
 // ValidateOrder step
 // ---------------------------
 
-async fn to_valid_order_line<Fn1: Fn(ProductCode) -> Fut1, Fut1: Future<Output = Result<()>>>(
-    check_product_code_exists: Fn1,
+async fn to_valid_order_line(
+    check_product_code_exists: impl AsyncFn1<ProductCode, Output = Result<()>>,
     unvalidated_line: UnvalidatedOrderLine,
 ) -> Result<ValidatedOrderLine> {
     let product_code = ProductCode::new(unvalidated_line.product_code);
@@ -53,17 +52,11 @@ async fn converts_to_order_line() {
     assert_eq!(valid_line, valid_order_line)
 }
 
-async fn validate_order<Fn1, Fn2, Fut1, Fut2>(
-    check_product_exists: Fn1,
-    check_address_exists: Fn2,
+async fn validate_order(
+    check_product_exists: impl AsyncFn1<ProductCode, Output = Result<()>> + Copy,
+    check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
     unvalidated_order: UnvalidatedOrder,
-) -> Result<ValidatedOrder>
-where
-    Fn1: Fn(ProductCode) -> Fut1 + Clone + Copy,
-    Fn2: Fn(Address) -> Fut2,
-    Fut1: Future<Output = Result<()>>,
-    Fut2: Future<Output = Result<()>>,
-{
+) -> Result<ValidatedOrder> {
     let order_id = OrderId::new(unvalidated_order.id);
 
     let lines = try_join_all(
@@ -85,11 +78,8 @@ where
 // PriceOrder step
 // ---------------------------
 
-async fn to_priced_order_line<
-    Fn1: Fn(ProductCode) -> Fut1,
-    Fut1: Future<Output = Result<Price>>,
->(
-    get_product_price: Fn1,
+async fn to_priced_order_line(
+    get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
     validated_order_line: ValidatedOrderLine,
 ) -> Result<PricedOrderLine> {
     let line_price = get_product_price(validated_order_line.product_code).await?;
@@ -101,11 +91,8 @@ async fn to_priced_order_line<
     Ok(priced_order_line)
 }
 
-async fn price_order<
-    Fn1: Fn(ProductCode) -> Fut + Clone + Copy,
-    Fut: Future<Output = Result<Price>>,
->(
-    get_product_price: Fn1,
+async fn price_order(
+    get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
     validated_order: ValidatedOrder,
 ) -> Result<PricedOrder> {
     let lines = try_join_all(
@@ -129,11 +116,8 @@ async fn price_order<
 // Shipping step
 // ---------------------------
 
-async fn add_shipping_info_to_order<
-    Fn1: Fn(PricedOrder) -> Fut,
-    Fut: Future<Output = Result<Price>>,
->(
-    calculate_shipping_cost: Fn1,
+async fn add_shipping_info_to_order(
+    calculate_shipping_cost: impl AsyncFn1<PricedOrder, Output = Result<Price>>,
     priced_order: PricedOrder,
 ) -> Result<PricedOrderWithShipping> {
     let price = calculate_shipping_cost(priced_order.clone()).await?;
@@ -155,14 +139,9 @@ async fn add_shipping_info_to_order<
 // AcknowledgeOrder step
 // ---------------------------
 
-async fn acknowledge_order<
-    Fn1: Fn(PricedOrderWithShipping) -> Fut1,
-    Fn2: Fn(Acknowledgment) -> Fut2,
-    Fut1: Future<Output = Result<Letter>>,
-    Fut2: Future<Output = Result<SendResult>>,
->(
-    create_acknowledgment_letter: Fn1,
-    send_order_acknowledgement: Fn2,
+async fn acknowledge_order(
+    create_acknowledgment_letter: impl AsyncFn1<PricedOrderWithShipping, Output = Result<Letter>>,
+    send_order_acknowledgement: impl AsyncFn1<Acknowledgment, Output = Result<SendResult>>,
     priced_order: PricedOrderWithShipping,
 ) -> Result<Option<OrderId>> {
     let letter = create_acknowledgment_letter(priced_order.clone()).await?;
@@ -214,51 +193,35 @@ fn create_events(
 // ---------------------------
 
 /// A workflow to place an order and return events, in the flavor of Scott Wlaschins Domain Modelling Made Functional
-pub async fn place_order<
-    'a,
-    Fn1: 'a + Fn(ProductCode) -> Fut1 + Clone + Copy,
-    Fn2: 'a + Fn(Address) -> Fut2 + Copy + Clone,
-    Fn3: 'a + Fn(ProductCode) -> Fut3 + Clone + Copy,
-    Fn4: 'a + Fn(PricedOrder) -> Fut4 + Clone + Copy,
-    Fn5: 'a + Fn(PricedOrderWithShipping) -> Fut5 + Clone + Copy,
-    Fn6: 'a + Fn(Acknowledgment) -> Fut6 + Clone + Copy,
-    Fut1: 'a + Future<Output = Result<()>>,
-    Fut2: 'a + Future<Output = Result<()>>,
-    Fut3: 'a + Future<Output = Result<Price>>,
-    Fut4: 'a + Future<Output = Result<Price>>,
-    Fut5: 'a + Future<Output = Result<Letter>>,
-    Fut6: 'a + Future<Output = Result<SendResult>>,
->(
-    check_product_exists: Fn1,
-    check_address_exists: Fn2,
-    get_product_price: Fn3,
-    calculate_shipping_cost: Fn4,
-    create_acknowledgment_letter: Fn5,
-    send_order_acknowledgement: Fn6,
+pub async fn place_order(
+    check_product_exists: impl AsyncFn1<ProductCode, Output = Result<()>> + Copy,
+    check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
+    get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
+    calculate_shipping_cost: impl AsyncFn1<PricedOrder, Output = Result<Price>>,
+    create_acknowledgment_letter: impl AsyncFn1<PricedOrderWithShipping, Output = Result<Letter>>,
+    send_order_acknowledgement: impl AsyncFn1<Acknowledgment, Output = Result<SendResult>>,
     // unvalidated_order: UnvalidatedOrder,
-) -> impl Fn(UnvalidatedOrder) -> Pin<Box<dyn Future<Output = Result<Vec<PlaceOrderEvent>>> + 'a>> {
-    move |unvalidated_order: UnvalidatedOrder| {
-        Box::pin(async move {
-            let validated_order = validate_order(
-                check_product_exists,
-                check_address_exists,
-                unvalidated_order,
-            )
-            .await?;
+) -> impl AsyncFnOnce1<UnvalidatedOrder, Output = Result<Vec<PlaceOrderEvent>>> {
+    move |unvalidated_order: UnvalidatedOrder| async move {
+        let validated_order = validate_order(
+            check_product_exists,
+            check_address_exists,
+            unvalidated_order,
+        )
+        .await?;
 
-            let priced_order = price_order(get_product_price, validated_order).await?;
+        let priced_order = price_order(get_product_price, validated_order).await?;
 
-            let priced_order_with_shipping =
-                add_shipping_info_to_order(calculate_shipping_cost, priced_order).await?;
+        let priced_order_with_shipping =
+            add_shipping_info_to_order(calculate_shipping_cost, priced_order).await?;
 
-            let acknowledgment_option = acknowledge_order(
-                create_acknowledgment_letter,
-                send_order_acknowledgement,
-                priced_order_with_shipping.clone(),
-            )
-            .await?;
-            let events = create_events(priced_order_with_shipping, acknowledgment_option);
-            Ok(events)
-        })
+        let acknowledgment_option = acknowledge_order(
+            create_acknowledgment_letter,
+            send_order_acknowledgement,
+            priced_order_with_shipping.clone(),
+        )
+        .await?;
+        let events = create_events(priced_order_with_shipping, acknowledgment_option);
+        Ok(events)
     }
 }
