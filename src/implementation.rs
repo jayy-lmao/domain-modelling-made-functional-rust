@@ -1,4 +1,6 @@
-use anyhow::Result;
+use std::sync::Arc;
+
+use anyhow::{anyhow, Result};
 use async_fn_traits::AsyncFn1;
 use async_fn_traits::AsyncFnOnce1;
 use futures_util::future::try_join_all;
@@ -32,9 +34,16 @@ async fn to_valid_order_line(
 }
 #[tokio::test]
 async fn converts_to_order_line() {
-    async fn check_product_code_exists(_code: ProductCode) -> Result<()> {
-        Ok(())
-    }
+    let fake_code = ProductCode::new("fake-code");
+    let codes = Arc::new(vec![fake_code]);
+    let codes_ref =  &codes;
+    let check_product_code_exists = move |code: ProductCode| async move {
+        let codes = codes_ref.clone();
+        if codes.contains(&code) {
+            return Ok(());
+        }
+        return Err(anyhow!("Arg"));
+    };
     let code = String::from("fake-code");
     let line_id = String::from("some-id");
 
@@ -193,7 +202,7 @@ fn create_events(
 // ---------------------------
 
 /// A workflow to place an order and return events, in the flavor of Scott Wlaschins Domain Modelling Made Functional
-pub async fn place_order(
+pub(crate) async fn place_order(
     check_product_exists: impl AsyncFn1<ProductCode, Output = Result<()>> + Copy,
     check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
     get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,

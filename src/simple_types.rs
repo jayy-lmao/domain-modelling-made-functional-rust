@@ -27,8 +27,8 @@ pub(crate) struct ProductCode {
 }
 
 impl ProductCode {
-    pub(crate) fn new(code: String) -> Self {
-        Self { value: code }
+    pub(crate) fn new(code: impl Into<String>) -> Self {
+        Self { value: code.into() }
     }
 }
 
