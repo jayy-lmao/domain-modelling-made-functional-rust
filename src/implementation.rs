@@ -154,7 +154,7 @@ async fn acknowledge_order<'a>(
     priced_order: PricedOrderWithShipping<'a>,
 ) -> Result<Option<OrderId<'a>>> {
     let id = priced_order.priced_order.order_id;
-    let letter = create_acknowledgment_letter(priced_order.clone()).await?;
+    let letter = create_acknowledgment_letter(priced_order).await?;
     let acknowledgement = Acknowledgment { letter };
     match send_order_acknowledgement(acknowledgement).await? {
         SendResult::Sent => Ok(Some(id)),
