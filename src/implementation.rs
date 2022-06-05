@@ -18,10 +18,10 @@ use crate::simple_types::*;
 // ValidateOrder step
 // ---------------------------
 
-async fn to_valid_order_line(
+async fn to_valid_order_line<'a>(
     check_product_code_exists: impl AsyncFn1<ProductCode, Output = Result<()>>,
-    unvalidated_line: UnvalidatedOrderLine,
-) -> Result<ValidatedOrderLine> {
+    unvalidated_line: UnvalidatedOrderLine<'a>,
+) -> Result<ValidatedOrderLine<'a>> {
     let product_code = ProductCode::new(unvalidated_line.product_code);
     let order_line_id = OrderLineId::new(unvalidated_line.order_line_id);
 
@@ -45,11 +45,11 @@ async fn converts_to_order_line() {
         return Err(anyhow!("Arg"));
     };
     let code = String::from("fake-code");
-    let line_id = String::from("some-id");
+    let line_id = "some-id";
 
     let unvalidated_line = UnvalidatedOrderLine {
         product_code: code.clone(),
-        order_line_id: line_id.clone(),
+        order_line_id: line_id,
     };
     let valid_line = to_valid_order_line(check_product_code_exists, unvalidated_line)
         .await
@@ -61,11 +61,11 @@ async fn converts_to_order_line() {
     assert_eq!(valid_line, valid_order_line)
 }
 
-async fn validate_order(
+async fn validate_order<'a>(
     check_product_exists: impl AsyncFn1<ProductCode, Output = Result<()>> + Copy,
-    check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
-    unvalidated_order: UnvalidatedOrder,
-) -> Result<ValidatedOrder> {
+    _check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
+    unvalidated_order: UnvalidatedOrder<'a>,
+) -> Result<ValidatedOrder<'a>> {
     let order_id = OrderId::new(unvalidated_order.id);
 
     let lines = try_join_all(
@@ -87,10 +87,10 @@ async fn validate_order(
 // PriceOrder step
 // ---------------------------
 
-async fn to_priced_order_line(
+async fn to_priced_order_line<'a>(
     get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
-    validated_order_line: ValidatedOrderLine,
-) -> Result<PricedOrderLine> {
+    validated_order_line: ValidatedOrderLine<'a>,
+) -> Result<PricedOrderLine<'a>> {
     let line_price = get_product_price(validated_order_line.product_code).await?;
 
     let priced_order_line = PricedOrderLine {
@@ -100,10 +100,10 @@ async fn to_priced_order_line(
     Ok(priced_order_line)
 }
 
-async fn price_order(
+async fn price_order<'a>(
     get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
-    validated_order: ValidatedOrder,
-) -> Result<PricedOrder> {
+    validated_order: ValidatedOrder<'a>,
+) -> Result<PricedOrder<'a>> {
     let lines = try_join_all(
         validated_order
             .lines
@@ -112,7 +112,7 @@ async fn price_order(
     )
     .await?;
 
-    let amount_to_bill = BillingAmount::sum_prices(lines.iter().map(|p| p.line_price.clone()));
+    let amount_to_bill = BillingAmount::sum_prices(lines.iter().map(|p| p.line_price));
 
     let priced_order = PricedOrder {
         order_id: validated_order.id,
@@ -125,10 +125,10 @@ async fn price_order(
 // Shipping step
 // ---------------------------
 
-async fn add_shipping_info_to_order(
-    calculate_shipping_cost: impl AsyncFn1<PricedOrder, Output = Result<Price>>,
-    priced_order: PricedOrder,
-) -> Result<PricedOrderWithShipping> {
+async fn add_shipping_info_to_order<'a>(
+    calculate_shipping_cost: impl AsyncFn1<PricedOrder<'a>, Output = Result<Price>>,
+    priced_order: PricedOrder<'a>,
+) -> Result<PricedOrderWithShipping<'a>> {
     let price = calculate_shipping_cost(priced_order.clone()).await?;
 
     let shipping = ShippingInfo {
@@ -148,11 +148,11 @@ async fn add_shipping_info_to_order(
 // AcknowledgeOrder step
 // ---------------------------
 
-async fn acknowledge_order(
-    create_acknowledgment_letter: impl AsyncFn1<PricedOrderWithShipping, Output = Result<Letter>>,
+async fn acknowledge_order<'a>(
+    create_acknowledgment_letter: impl AsyncFn1<PricedOrderWithShipping<'a>, Output = Result<Letter>>,
     send_order_acknowledgement: impl AsyncFn1<Acknowledgment, Output = Result<SendResult>>,
-    priced_order: PricedOrderWithShipping,
-) -> Result<Option<OrderId>> {
+    priced_order: PricedOrderWithShipping<'a>,
+) -> Result<Option<OrderId<'a>>> {
     let letter = create_acknowledgment_letter(priced_order.clone()).await?;
     let acknowledgement = Acknowledgment { letter };
     match send_order_acknowledgement(acknowledgement).await? {
@@ -165,13 +165,13 @@ async fn acknowledge_order(
 // Create events
 // ---------------------------
 
-fn create_shipping_event(placed_order: PricedOrder) -> PlaceOrderEvent {
+fn create_shipping_event<'a>(placed_order: &PricedOrder<'a>) -> PlaceOrderEvent<'a> {
     ShippableOrderPlaced {
-        order_id: placed_order.order_id,
+        order_id: placed_order.order_id.clone(),
     }
     .into()
 }
-fn create_billing_event(placed_order: PricedOrder) -> PlaceOrderEvent {
+fn create_billing_event<'a>(placed_order: &PricedOrder<'a>) -> PlaceOrderEvent<'a> {
     BillableOrderPlaced {
         order_id: placed_order.order_id,
         amount_to_bill: placed_order.amount_to_bill.value(),
@@ -182,17 +182,17 @@ fn create_acknowledgment_event(order_id: OrderId) -> PlaceOrderEvent {
     AcknowledgmentSent { order_id }.into()
 }
 
-fn create_events(
-    priced_order: PricedOrderWithShipping,
-    acknowledgment_option: Option<OrderId>,
-) -> Vec<PlaceOrderEvent> {
+fn create_events<'a>(
+    priced_order: PricedOrderWithShipping<'a>,
+    acknowledgment_option: Option<OrderId<'a>>,
+) -> Vec<PlaceOrderEvent<'a>> {
     let acknowledgment_events = acknowledgment_option
         .map(create_acknowledgment_event)
         .map(|e| vec![e])
-        .unwrap_or(vec![]);
+        .unwrap_or_default();
 
-    let billing_events = vec![create_billing_event(priced_order.priced_order.clone())];
-    let shipping_events = vec![create_shipping_event(priced_order.priced_order.clone())];
+    let billing_events = vec![create_billing_event(&priced_order.priced_order)];
+    let shipping_events = vec![create_shipping_event(&priced_order.priced_order)];
 
     [acknowledgment_events, billing_events, shipping_events].concat()
 }
@@ -202,16 +202,16 @@ fn create_events(
 // ---------------------------
 
 /// A workflow to place an order and return events, in the flavor of Scott Wlaschins Domain Modelling Made Functional
-pub(crate) async fn place_order(
+pub(crate) async fn place_order<'a>(
     check_product_exists: impl AsyncFn1<ProductCode, Output = Result<()>> + Copy,
     check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
     get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
-    calculate_shipping_cost: impl AsyncFn1<PricedOrder, Output = Result<Price>>,
-    create_acknowledgment_letter: impl AsyncFn1<PricedOrderWithShipping, Output = Result<Letter>>,
+    calculate_shipping_cost: impl AsyncFn1<PricedOrder<'a>, Output = Result<Price>>,
+    create_acknowledgment_letter: impl AsyncFn1<PricedOrderWithShipping<'a>, Output = Result<Letter>>,
     send_order_acknowledgement: impl AsyncFn1<Acknowledgment, Output = Result<SendResult>>,
     // unvalidated_order: UnvalidatedOrder,
-) -> impl AsyncFnOnce1<UnvalidatedOrder, Output = Result<Vec<PlaceOrderEvent>>> {
-    move |unvalidated_order: UnvalidatedOrder| async move {
+) -> impl AsyncFnOnce1<UnvalidatedOrder<'a>, Output = Result<Vec<PlaceOrderEvent<'a>>>> {
+    move |unvalidated_order: UnvalidatedOrder<'a>| async move {
         let validated_order = validate_order(
             check_product_exists,
             check_address_exists,

@@ -1,22 +1,22 @@
 use std::iter::Sum;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct OrderLineId {
-    value: String,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct OrderLineId<'a> {
+    value: &'a str,
 }
 
-impl OrderLineId {
-    pub(crate) fn new(id: impl Into<String>) -> Self {
-        Self { value: id.into() }
+impl<'a> OrderLineId<'a> {
+    pub(crate) fn new(id: &'a str) -> Self {
+        Self { value: id }
     }
 }
-#[derive(Clone)]
-pub(crate) struct OrderId {
-    value: String,
+#[derive(Clone, Copy)]
+pub(crate) struct OrderId<'a> {
+    value: &'a str,
 }
 
-impl OrderId {
-    pub(crate) fn new(id: String) -> Self {
+impl<'a> OrderId<'a> {
+    pub(crate) fn new(id: &'a str) -> Self {
         Self { value: id }
     }
 }
@@ -62,7 +62,7 @@ impl Sum<Self> for Price {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) struct BillingAmount {
     value: Price,
 }
