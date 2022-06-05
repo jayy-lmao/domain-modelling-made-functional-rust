@@ -153,10 +153,11 @@ async fn acknowledge_order<'a>(
     send_order_acknowledgement: impl AsyncFn1<Acknowledgment, Output = Result<SendResult>>,
     priced_order: PricedOrderWithShipping<'a>,
 ) -> Result<Option<OrderId<'a>>> {
+    let id = priced_order.priced_order.order_id;
     let letter = create_acknowledgment_letter(priced_order.clone()).await?;
     let acknowledgement = Acknowledgment { letter };
     match send_order_acknowledgement(acknowledgement).await? {
-        SendResult::Sent => Ok(Some(priced_order.priced_order.order_id)),
+        SendResult::Sent => Ok(Some(id)),
         SendResult::NotSent => Ok(None),
     }
 }
@@ -167,7 +168,7 @@ async fn acknowledge_order<'a>(
 
 fn create_shipping_event<'a>(placed_order: &PricedOrder<'a>) -> PlaceOrderEvent<'a> {
     ShippableOrderPlaced {
-        order_id: placed_order.order_id.clone(),
+        order_id: placed_order.order_id,
     }
     .into()
 }
