@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
@@ -117,7 +119,7 @@ async fn price_order<'a>(
     let priced_order = PricedOrder {
         order_id: validated_order.id,
         amount_to_bill,
-        lines,
+        lines: Cow::from(lines),
     };
     Ok(priced_order)
 }

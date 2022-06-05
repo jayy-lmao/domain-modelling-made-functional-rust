@@ -1,3 +1,5 @@
+use std::{sync::Arc, rc::Rc, borrow::Cow};
+
 use crate::simple_types::*;
 
 #[derive(Clone)]
@@ -33,7 +35,7 @@ pub(crate) struct PricedOrderLine<'a> {
 pub(crate) struct PricedOrder<'a> {
     pub(crate) order_id: OrderId<'a>,
     pub(crate) amount_to_bill: BillingAmount,
-    pub(crate) lines: Vec<PricedOrderLine<'a>>,
+    pub(crate) lines: Cow<'a, [PricedOrderLine<'a>]>,
 }
 
 pub(crate) struct UnvalidatedOrderLine<'a> {
