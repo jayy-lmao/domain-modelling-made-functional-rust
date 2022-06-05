@@ -1,6 +1,6 @@
-pub mod implementation;
-mod compound_types;
-mod internal_types;
-mod simple_types;
-pub mod public_types;
 pub mod api;
+mod compound_types;
+pub mod implementation;
+mod internal_types;
+pub mod public_types;
+mod simple_types;

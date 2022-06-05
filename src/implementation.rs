@@ -36,7 +36,7 @@ async fn to_valid_order_line(
 async fn converts_to_order_line() {
     let fake_code = ProductCode::new("fake-code");
     let codes = Arc::new(vec![fake_code]);
-    let codes_ref =  &codes;
+    let codes_ref = &codes;
     let check_product_code_exists = move |code: ProductCode| async move {
         let codes = codes_ref.clone();
         if codes.contains(&code) {
