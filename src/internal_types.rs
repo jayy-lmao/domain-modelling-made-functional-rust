@@ -38,12 +38,12 @@ pub(crate) struct PricedOrder<'a> {
 
 pub(crate) struct UnvalidatedOrderLine<'a> {
     pub(crate) order_line_id: &'a str,
-    pub(crate) product_code: String,
+    pub(crate) product_code: &'a str,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ValidatedOrderLine<'a> {
     pub(crate) order_line_id: OrderLineId<'a>,
-    pub(crate) product_code: ProductCode,
+    pub(crate) product_code: ProductCode<'a>,
 }
 pub(crate) struct UnvalidatedOrder<'a> {
     pub(crate) id: &'a str,

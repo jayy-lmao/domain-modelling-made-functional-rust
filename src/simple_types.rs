@@ -21,14 +21,14 @@ impl<'a> OrderId<'a> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) struct ProductCode {
-    value: String,
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct ProductCode<'a> {
+    value: &'a str,
 }
 
-impl ProductCode {
-    pub(crate) fn new(code: impl Into<String>) -> Self {
-        Self { value: code.into() }
+impl<'a> ProductCode<'a> {
+    pub(crate) fn new(code: &'a str) -> Self {
+        Self { value: code }
     }
 }
 

@@ -19,13 +19,13 @@ use crate::simple_types::*;
 // ---------------------------
 
 async fn to_valid_order_line<'a>(
-    check_product_code_exists: impl AsyncFn1<ProductCode, Output = Result<()>>,
+    check_product_code_exists: impl AsyncFn1<ProductCode<'a>, Output = Result<()>>,
     unvalidated_line: UnvalidatedOrderLine<'a>,
 ) -> Result<ValidatedOrderLine<'a>> {
     let product_code = ProductCode::new(unvalidated_line.product_code);
     let order_line_id = OrderLineId::new(unvalidated_line.order_line_id);
 
-    check_product_code_exists(product_code.clone()).await?;
+    check_product_code_exists(product_code).await?;
 
     Ok(ValidatedOrderLine {
         product_code,
@@ -33,22 +33,22 @@ async fn to_valid_order_line<'a>(
     })
 }
 #[tokio::test]
-async fn converts_to_order_line() {
+async fn converts_to_order_line<'a>() {
     let fake_code = ProductCode::new("fake-code");
     let codes = Arc::new(vec![fake_code]);
     let codes_ref = &codes;
-    let check_product_code_exists = move |code: ProductCode| async move {
+    let check_product_code_exists = move |code: ProductCode<'a>| async move {
         let codes = codes_ref.clone();
         if codes.contains(&code) {
             return Ok(());
         }
         return Err(anyhow!("Arg"));
     };
-    let code = String::from("fake-code");
+    let code = "fake-code";
     let line_id = "some-id";
 
     let unvalidated_line = UnvalidatedOrderLine {
-        product_code: code.clone(),
+        product_code: code,
         order_line_id: line_id,
     };
     let valid_line = to_valid_order_line(check_product_code_exists, unvalidated_line)
@@ -62,7 +62,7 @@ async fn converts_to_order_line() {
 }
 
 async fn validate_order<'a>(
-    check_product_exists: impl AsyncFn1<ProductCode, Output = Result<()>> + Copy,
+    check_product_exists: impl AsyncFn1<ProductCode<'a>, Output = Result<()>> + Copy,
     _check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
     unvalidated_order: UnvalidatedOrder<'a>,
 ) -> Result<ValidatedOrder<'a>> {
@@ -88,7 +88,7 @@ async fn validate_order<'a>(
 // ---------------------------
 
 async fn to_priced_order_line<'a>(
-    get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
+    get_product_price: impl AsyncFn1<ProductCode<'a>, Output = Result<Price>> + Copy,
     validated_order_line: ValidatedOrderLine<'a>,
 ) -> Result<PricedOrderLine<'a>> {
     let line_price = get_product_price(validated_order_line.product_code).await?;
@@ -101,7 +101,7 @@ async fn to_priced_order_line<'a>(
 }
 
 async fn price_order<'a>(
-    get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
+    get_product_price: impl AsyncFn1<ProductCode<'a>, Output = Result<Price>> + Copy,
     validated_order: ValidatedOrder<'a>,
 ) -> Result<PricedOrder<'a>> {
     let lines = try_join_all(
@@ -203,9 +203,9 @@ fn create_events<'a>(
 
 /// A workflow to place an order and return events, in the flavor of Scott Wlaschins Domain Modelling Made Functional
 pub(crate) async fn place_order<'a>(
-    check_product_exists: impl AsyncFn1<ProductCode, Output = Result<()>> + Copy,
+    check_product_exists: impl AsyncFn1<ProductCode<'a>, Output = Result<()>> + Copy,
     check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
-    get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
+    get_product_price: impl AsyncFn1<ProductCode<'a>, Output = Result<Price>> + Copy,
     calculate_shipping_cost: impl AsyncFn1<PricedOrder<'a>, Output = Result<Price>>,
     create_acknowledgment_letter: impl AsyncFn1<PricedOrderWithShipping<'a>, Output = Result<Letter>>,
     send_order_acknowledgement: impl AsyncFn1<Acknowledgment, Output = Result<SendResult>>,
