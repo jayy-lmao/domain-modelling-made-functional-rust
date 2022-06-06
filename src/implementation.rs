@@ -11,6 +11,58 @@ use crate::public_types::*;
 use crate::simple_types::*;
 
 // ======================================================
+// Section 1 : Define each step in the workflow using types
+// ======================================================
+
+pub(crate) trait CheckProductCodeExists:
+    AsyncFn1<ProductCode, Output = Result<()>> + Copy
+{
+}
+impl<T> CheckProductCodeExists for T where T: AsyncFn1<ProductCode, Output = Result<()>> + Copy {}
+
+pub(crate) trait CheckAddressExists: AsyncFn1<Address, Output = Result<()>> + Copy {}
+impl<T> CheckAddressExists for T where T: AsyncFn1<Address, Output = Result<()>> + Copy {}
+
+pub(crate) trait GetProductPrice:
+    AsyncFn1<ProductCode, Output = Result<Price>> + Copy
+{
+}
+impl<T> GetProductPrice for T where T: AsyncFn1<ProductCode, Output = Result<Price>> + Copy {}
+
+pub(crate) trait CalculateShippingCost:
+    AsyncFn1<PricedOrder, Output = Result<Price>> + Copy
+{
+}
+impl<T> CalculateShippingCost for T where T: AsyncFn1<PricedOrder, Output = Result<Price>> + Copy {}
+
+pub(crate) trait CreateAcknowledgmentLetter:
+    AsyncFn1<PricedOrderWithShipping, Output = Result<Letter>> + Copy
+{
+}
+impl<T> CreateAcknowledgmentLetter for T where
+    T: AsyncFn1<PricedOrderWithShipping, Output = Result<Letter>> + Copy
+{
+}
+
+pub(crate) trait SendOrderAcknowledgement:
+    AsyncFn1<Acknowledgment, Output = Result<SendResult>> + Copy
+{
+}
+impl<T> SendOrderAcknowledgement for T where
+    T: AsyncFn1<Acknowledgment, Output = Result<SendResult>> + Copy
+{
+}
+
+pub(crate) trait PlaceOrder:
+    AsyncFn1<UnvalidatedOrder, Output = Result<Vec<PlaceOrderEvent>>> + Copy
+{
+}
+impl<T> PlaceOrder for T where
+    T: AsyncFn1<UnvalidatedOrder, Output = Result<Vec<PlaceOrderEvent>>> + Copy
+{
+}
+
+// ======================================================
 // Section 2 : Implementation
 // ======================================================
 
@@ -19,7 +71,7 @@ use crate::simple_types::*;
 // ---------------------------
 
 async fn to_valid_order_line(
-    check_product_code_exists: impl AsyncFn1<ProductCode, Output = Result<()>>,
+    check_product_code_exists: impl CheckProductCodeExists,
     unvalidated_line: UnvalidatedOrderLine,
 ) -> Result<ValidatedOrderLine> {
     let product_code = ProductCode::new(unvalidated_line.product_code);
@@ -62,8 +114,8 @@ async fn converts_to_order_line() {
 }
 
 async fn validate_order(
-    check_product_exists: impl AsyncFn1<ProductCode, Output = Result<()>> + Copy,
-    check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
+    check_product_exists: impl CheckProductCodeExists,
+    check_address_exists: impl CheckAddressExists,
     unvalidated_order: UnvalidatedOrder,
 ) -> Result<ValidatedOrder> {
     let order_id = OrderId::new(unvalidated_order.id);
@@ -88,7 +140,7 @@ async fn validate_order(
 // ---------------------------
 
 async fn to_priced_order_line(
-    get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
+    get_product_price: impl GetProductPrice,
     validated_order_line: ValidatedOrderLine,
 ) -> Result<PricedOrderLine> {
     let line_price = get_product_price(validated_order_line.product_code).await?;
@@ -101,7 +153,7 @@ async fn to_priced_order_line(
 }
 
 async fn price_order(
-    get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
+    get_product_price: impl GetProductPrice,
     validated_order: ValidatedOrder,
 ) -> Result<PricedOrder> {
     let lines = try_join_all(
@@ -126,7 +178,7 @@ async fn price_order(
 // ---------------------------
 
 async fn add_shipping_info_to_order(
-    calculate_shipping_cost: impl AsyncFn1<PricedOrder, Output = Result<Price>>,
+    calculate_shipping_cost: impl CalculateShippingCost,
     priced_order: PricedOrder,
 ) -> Result<PricedOrderWithShipping> {
     let price = calculate_shipping_cost(priced_order.clone()).await?;
@@ -149,8 +201,8 @@ async fn add_shipping_info_to_order(
 // ---------------------------
 
 async fn acknowledge_order(
-    create_acknowledgment_letter: impl AsyncFn1<PricedOrderWithShipping, Output = Result<Letter>>,
-    send_order_acknowledgement: impl AsyncFn1<Acknowledgment, Output = Result<SendResult>>,
+    create_acknowledgment_letter: impl CreateAcknowledgmentLetter,
+    send_order_acknowledgement: impl SendOrderAcknowledgement,
     priced_order: PricedOrderWithShipping,
 ) -> Result<Option<OrderId>> {
     let letter = create_acknowledgment_letter(priced_order.clone()).await?;
@@ -203,14 +255,14 @@ fn create_events(
 
 /// A workflow to place an order and return events, in the flavor of Scott Wlaschins Domain Modelling Made Functional
 pub(crate) async fn place_order(
-    check_product_exists: impl AsyncFn1<ProductCode, Output = Result<()>> + Copy,
-    check_address_exists: impl AsyncFn1<Address, Output = Result<()>>,
-    get_product_price: impl AsyncFn1<ProductCode, Output = Result<Price>> + Copy,
-    calculate_shipping_cost: impl AsyncFn1<PricedOrder, Output = Result<Price>>,
-    create_acknowledgment_letter: impl AsyncFn1<PricedOrderWithShipping, Output = Result<Letter>>,
-    send_order_acknowledgement: impl AsyncFn1<Acknowledgment, Output = Result<SendResult>>,
+    check_product_exists: impl CheckProductCodeExists,
+    check_address_exists: impl CheckAddressExists,
+    get_product_price: impl GetProductPrice,
+    calculate_shipping_cost: impl CalculateShippingCost,
+    create_acknowledgment_letter: impl CreateAcknowledgmentLetter,
+    send_order_acknowledgement: impl SendOrderAcknowledgement,
     // unvalidated_order: UnvalidatedOrder,
-) -> impl AsyncFnOnce1<UnvalidatedOrder, Output = Result<Vec<PlaceOrderEvent>>> {
+) -> impl PlaceOrder {
     move |unvalidated_order: UnvalidatedOrder| async move {
         let validated_order = validate_order(
             check_product_exists,
