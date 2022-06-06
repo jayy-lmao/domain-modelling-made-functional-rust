@@ -1,8 +1,8 @@
-use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+
+use anyhow::{Result};
 use async_fn_traits::AsyncFn1;
-use async_fn_traits::AsyncFnOnce1;
+
 use futures_util::future::try_join_all;
 
 use crate::compound_types::*;
@@ -115,7 +115,7 @@ async fn converts_to_order_line() {
 
 async fn validate_order(
     check_product_exists: impl CheckProductCodeExists,
-    check_address_exists: impl CheckAddressExists,
+    _check_address_exists: impl CheckAddressExists,
     unvalidated_order: UnvalidatedOrder,
 ) -> Result<ValidatedOrder> {
     let order_id = OrderId::new(unvalidated_order.id);
@@ -164,7 +164,7 @@ async fn price_order(
     )
     .await?;
 
-    let amount_to_bill = BillingAmount::sum_prices(lines.iter().map(|p| p.line_price.clone()));
+    let amount_to_bill = BillingAmount::sum_prices(lines.iter().map(|p| p.line_price));
 
     let priced_order = PricedOrder {
         order_id: validated_order.id,
@@ -240,11 +240,10 @@ fn create_events(
 ) -> Vec<PlaceOrderEvent> {
     let acknowledgment_events = acknowledgment_option
         .map(create_acknowledgment_event)
-        .map(|e| vec![e])
-        .unwrap_or(vec![]);
+        .map(|e| vec![e]).unwrap_or_default();
 
     let billing_events = vec![create_billing_event(priced_order.priced_order.clone())];
-    let shipping_events = vec![create_shipping_event(priced_order.priced_order.clone())];
+    let shipping_events = vec![create_shipping_event(priced_order.priced_order)];
 
     [acknowledgment_events, billing_events, shipping_events].concat()
 }
