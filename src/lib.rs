@@ -4,3 +4,6 @@ pub mod implementation;
 mod internal_types;
 pub mod public_types;
 mod simple_types;
+
+#[cfg(test)]
+mod tests;
