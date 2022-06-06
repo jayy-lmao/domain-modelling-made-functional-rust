@@ -1,5 +1,6 @@
 # domain-modelling-made-functional-rust
 
+[![Rust](https://github.com/jayy-lmao/domain-modelling-made-functional-rust/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/jayy-lmao/domain-modelling-made-functional-rust/actions/workflows/rust.yml)
 
 This is an attempt to translate the core example from "Domain Modelling Made Functional" by Scott Wlaschin. 
 As you can probably see there is no nice way to do async functions as arguments / async closure returns in Rust.
