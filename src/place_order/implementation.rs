@@ -3,10 +3,10 @@ use async_fn_traits::AsyncFn1;
 
 use futures_util::future::try_join_all;
 
-use crate::compound_types::*;
-use crate::internal_types::*;
-use crate::public_types::*;
-use crate::simple_types::*;
+use crate::common::compound_types::*;
+use crate::common::simple_types::*;
+use crate::place_order::internal_types::*;
+use crate::place_order::public_types::*;
 
 // ======================================================
 // Section 1 : Define each step in the workflow using types

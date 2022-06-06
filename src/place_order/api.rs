@@ -7,9 +7,11 @@ pub mod dto {
 use dto::*;
 
 use crate::{
-    compound_types::{Acknowledgment, Address, Letter},
-    internal_types::{PricedOrder, PricedOrderWithShipping, SendResult},
-    simple_types::{Price, ProductCode},
+    common::{
+        compound_types::{Acknowledgment, Address, Letter},
+        simple_types::{Price, ProductCode},
+    },
+    place_order::internal_types::{PricedOrder, PricedOrderWithShipping, SendResult},
 };
 
 async fn place_order(_order: OrderDto) -> Result<()> {
@@ -32,7 +34,7 @@ async fn place_order(_order: OrderDto) -> Result<()> {
     };
     let send_order_acknowledgement = |_a: Acknowledgment| async { Ok(SendResult::Sent) };
 
-    let _workflow = crate::implementation::place_order(
+    let _workflow = crate::place_order::implementation::place_order(
         check_product_exists,
         check_address_exists,
         get_product_price,

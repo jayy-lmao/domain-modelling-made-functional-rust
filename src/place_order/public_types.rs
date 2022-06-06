@@ -1,4 +1,5 @@
-use crate::simple_types::*;
+use crate::common::simple_types::*;
+
 
 #[derive(Clone)]
 pub(crate) struct AcknowledgmentSent {

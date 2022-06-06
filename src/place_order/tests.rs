@@ -1,7 +1,10 @@
 use anyhow::anyhow;
 use std::sync::Arc;
 
-use crate::{implementation::to_valid_order_line, internal_types::*, simple_types::*};
+use crate::common::simple_types::{OrderLineId, ProductCode};
+
+use super::implementation::to_valid_order_line;
+use super::internal_types::{UnvalidatedOrderLine, ValidatedOrderLine};
 
 #[tokio::test]
 async fn converts_to_order_line() {
